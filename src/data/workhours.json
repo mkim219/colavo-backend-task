@@ -1,0 +1,9 @@
+[
+  { "weekday": 6, "key": "fri", "is_day_off": false, "open_interval": 36000, "close_interval": 72000 },
+  { "weekday": 2, "key": "mon", "is_day_off": false, "open_interval": 36900, "close_interval": 36900 },
+  { "weekday": 7, "key": "sat", "is_day_off": false, "open_interval": 36000, "close_interval": 72000 },
+  { "weekday": 1, "key": "sun", "is_day_off": false, "open_interval": 36000, "close_interval": 72000 },
+  { "weekday": 5, "key": "thu", "is_day_off": false, "open_interval": 36000, "close_interval": 72000 },
+  { "weekday": 3, "key": "tue", "is_day_off": false, "open_interval": 36000, "close_interval": 72000 },
+  { "weekday": 4, "key": "wed", "is_day_off": false, "open_interval": 36000, "close_interval": 72000 }
+] 
