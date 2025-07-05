@@ -218,7 +218,20 @@ curl -X POST http://localhost:3000/getTimeSlots \
 ```
 **설명**: 현재 events.json에 포함된 잘못된 이벤트 데이터 (begin_at > end_at)가 있어도 API가 정상 작동하는지 확인합니다.
 
-##### 6.2. 잘못된 vs 정상 이벤트 데이터 비교
+##### 6.2. 0초 이벤트 처리 (begin_at === end_at)
+```json
+{
+  "start_day_identifier": "20210506",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": 600,  // 10분
+  "days": 1,
+  "timeslot_interval": 600,
+  "is_ignore_schedule": false
+}
+```
+**설명**: 0초 이벤트(begin_at === end_at)가 있는 시간대에는 해당 시간에 시작하는 모든 서비스가 차단되는지 확인합니다. 예: 10:30:00에 0초 이벤트가 있으면 10:30~10:40 타임슬롯이 생성되지 않습니다.
+
+##### 6.3. 잘못된 vs 정상 이벤트 데이터 비교
 ```json
 // 잘못된 데이터가 있는 날짜
 {
@@ -274,7 +287,8 @@ curl -X POST http://localhost:3000/getTimeSlots \
 ### 3. 예약 충돌 검사
 - 기존 예약과 겹치는 시간대 자동 제외
 - 서비스 시간을 고려한 정확한 충돌 검사
-- 비정상 데이터 필터링
+- 비정상 데이터 필터링 (begin_at > end_at인 경우 무시)
+- **0초 이벤트 특별 처리**: begin_at === end_at인 경우 해당 시간에 시작하는 모든 서비스 차단
 
 ### 4. 유연한 옵션 설정
 - 스케줄 무시 옵션

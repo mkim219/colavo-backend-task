@@ -178,8 +178,14 @@ export class TimeslotService {
           return false;
         }
         
-        // 겹치는 조건: 서비스 시작 시간이 이벤트 종료 시간보다 이르고, 서비스 종료 시간이 이벤트 시작 시간보다 늦은 경우
-        return timeslot.begin_at < event.end_at && serviceEndTime > event.begin_at;
+        // 겹치는 조건: 서비스 시간과 이벤트 시간이 겹치는 경우
+        if (event.begin_at === event.end_at) {
+          // 0초 이벤트의 경우: 정확히 그 시간에 시작하거나 포함하는 서비스 모두 차단
+          return timeslot.begin_at <= event.begin_at && serviceEndTime > event.begin_at;
+        } else {
+          // 일반 이벤트의 경우: 기존 로직 사용 (끝나는 시간과 시작하는 시간이 같으면 충돌 안됨)
+          return timeslot.begin_at < event.end_at && serviceEndTime > event.begin_at;
+        }
       });
 
       return !hasConflict;
