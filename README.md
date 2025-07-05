@@ -83,6 +83,12 @@ interface Timeslot {
 ```bash
 # 전체 테스트 실행
 npm test
+
+# 타임존별 동작 테스트만 실행
+npm test -- --testNamePattern="타임존별 동작 테스트"
+
+# 커버리지 포함 테스트 실행
+npm test -- --coverage
 ```
 
 ### 수동 테스트 (cURL)
@@ -144,12 +150,66 @@ curl -X POST http://localhost:3000/getTimeSlots \
 }
 ```
 
+#### 5. 타임존별 동작 테스트
+
+##### 5.1. 한국 표준시 (Asia/Seoul, UTC+9)
+```json
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800
+}
+```
+
+##### 5.2. 미국 동부 시간 (America/New_York, UTC-4/UTC-5)
+```json
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "America/New_York",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800
+}
+```
+
+##### 5.3. 브라질 표준시 (America/Sao_Paulo, UTC-3)
+```json
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "America/Sao_Paulo",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800
+}
+```
+
+> **타임존별 차이점**: 동일한 날짜라도 타임존에 따라 `start_of_day`와 `timeslots`의 Unix timestamp 값이 다릅니다. 이는 각 타임존의 UTC 오프셋 차이로 인한 정상적인 동작입니다.
+
+#### 6. 에러 케이스 테스트
+
+##### 6.1. 잘못된 타임존 식별자
+```json
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "InvalidTimezone123",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800
+}
+```
+**예상 응답**: 400 Bad Request - "유효하지 않은 timezone_identifier입니다."
+
 ## 🔧 주요 기능
 
 ### 1. 타임존 변환
-- Luxon 라이브러리를 사용한 정확한 타임존 변환
-- 일광절약시간(DST) 자동 처리
-- 다양한 타임존 지원
+- **Luxon 라이브러리** 기반의 정확한 타임존 변환
+- **일광절약시간(DST)** 자동 처리 및 오프셋 계산
+- **다양한 타임존** 지원 (Asia/Seoul, America/New_York, America/Sao_Paulo 등)
+- **타임존 유효성 검사** 기능으로 잘못된 타임존 식별자 차단
+- **UTC 기준 변환**: 각 타임존의 로컬 시간을 UTC 기준으로 정확히 변환
+- **날짜 경계 처리**: 타임존별로 다른 날짜 시작점(start_of_day) 계산
 
 ### 2. 영업시간 처리
 - 요일별 영업시간 설정
