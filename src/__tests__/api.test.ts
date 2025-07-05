@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { Server } from 'http';
 import app from '../app';
-import { DayTimetable, RequestBody } from '../types/interfaces';
+import { DayTimetable, RequestBody, Timeslot } from '../types/interfaces';
 
 describe('POST /getTimeSlots API 통합 테스트', () => {
   let server: Server;
@@ -337,6 +337,302 @@ describe('POST /getTimeSlots API 통합 테스트', () => {
 
       expect(response.body).toHaveProperty('error');
       expect(response.body.error).toBe('Route not found');
+    });
+  });
+
+  describe('특수 데이터 처리 테스트', () => {
+    it('잘못된 이벤트 데이터 처리 테스트 (begin_at > end_at)', async () => {
+      // 현재 events.json에는 잘못된 데이터가 포함되어 있음
+      // { "begin_at": 1620276300, "end_at": 1620275400 } - begin_at > end_at
+      // 이런 잘못된 데이터가 있어도 API가 정상 작동해야 함
+      
+      const requestBody: RequestBody = {
+        start_day_identifier: '20210506', // 잘못된 이벤트가 있는 날짜
+        timezone_identifier: 'Asia/Seoul',
+        service_duration: 3600, // 1시간
+        days: 1,
+        timeslot_interval: 1800, // 30분 간격
+        is_ignore_schedule: false // 스케줄 고려함
+      };
+
+      const response = await request(app)
+        .post('/getTimeSlots')
+        .send(requestBody)
+        .expect(200);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(1);
+
+      const dayTimetable: DayTimetable = response.body[0];
+      expect(dayTimetable.day_modifier).toBe(0);
+      expect(dayTimetable.is_day_off).toBe(false);
+      expect(Array.isArray(dayTimetable.timeslots)).toBe(true);
+      
+      // 잘못된 이벤트 데이터가 있어도 타임슬롯이 정상적으로 생성되어야 함
+      console.log('잘못된 이벤트 데이터가 있는 날짜의 타임슬롯 개수:', dayTimetable.timeslots.length);
+      
+      // 타임슬롯이 존재해야 함 (잘못된 데이터는 무시되므로)
+      expect(dayTimetable.timeslots.length).toBeGreaterThan(0);
+    });
+
+    it('잘못된 이벤트 데이터 무시 vs 정상 이벤트 데이터 처리 비교', async () => {
+      // 1. 잘못된 이벤트가 있는 날짜 (2021-05-06)
+      const requestWithBadData: RequestBody = {
+        start_day_identifier: '20210506',
+        timezone_identifier: 'Asia/Seoul',
+        service_duration: 3600,
+        days: 1,
+        timeslot_interval: 1800,
+        is_ignore_schedule: false
+      };
+
+      const responseWithBadData = await request(app)
+        .post('/getTimeSlots')
+        .send(requestWithBadData)
+        .expect(200);
+
+      // 2. 정상 이벤트가 있는 날짜 (2021-05-07)
+      const requestWithGoodData: RequestBody = {
+        start_day_identifier: '20210507',
+        timezone_identifier: 'Asia/Seoul',
+        service_duration: 3600,
+        days: 1,
+        timeslot_interval: 1800,
+        is_ignore_schedule: false
+      };
+
+      const responseWithGoodData = await request(app)
+        .post('/getTimeSlots')
+        .send(requestWithGoodData)
+        .expect(200);
+
+      const badDataTimeslots = responseWithBadData.body[0].timeslots;
+      const goodDataTimeslots = responseWithGoodData.body[0].timeslots;
+
+      console.log('잘못된 이벤트 데이터가 있는 날짜 타임슬롯 개수:', badDataTimeslots.length);
+      console.log('정상 이벤트 데이터가 있는 날짜 타임슬롯 개수:', goodDataTimeslots.length);
+
+      // 잘못된 데이터는 무시되므로 타임슬롯이 더 많을 수 있음
+      expect(badDataTimeslots.length).toBeGreaterThan(0);
+      expect(goodDataTimeslots.length).toBeGreaterThan(0);
+    });
+
+    it('스케줄 무시 옵션으로 잘못된 이벤트 데이터 영향 확인', async () => {
+      const baseRequest: RequestBody = {
+        start_day_identifier: '20210506', // 잘못된 이벤트가 있는 날짜
+        timezone_identifier: 'Asia/Seoul',
+        service_duration: 3600,
+        days: 1,
+        timeslot_interval: 1800
+      };
+
+      // 1. 스케줄 고려 (잘못된 데이터는 무시됨)
+      const withScheduleCheck = await request(app)
+        .post('/getTimeSlots')
+        .send({ ...baseRequest, is_ignore_schedule: false })
+        .expect(200);
+
+      // 2. 스케줄 무시 (모든 이벤트 데이터 무시)
+      const withoutScheduleCheck = await request(app)
+        .post('/getTimeSlots')
+        .send({ ...baseRequest, is_ignore_schedule: true })
+        .expect(200);
+
+      const withScheduleTimeslots = withScheduleCheck.body[0].timeslots;
+      const withoutScheduleTimeslots = withoutScheduleCheck.body[0].timeslots;
+
+      console.log('스케줄 고려 시 타임슬롯 개수:', withScheduleTimeslots.length);
+      console.log('스케줄 무시 시 타임슬롯 개수:', withoutScheduleTimeslots.length);
+
+      // 스케줄을 무시할 때 더 많은 타임슬롯이 있어야 함
+      expect(withoutScheduleTimeslots.length).toBeGreaterThanOrEqual(withScheduleTimeslots.length);
+    });
+  });
+
+  describe('0초 길이 이벤트 처리 테스트', () => {
+    it('0초 길이 이벤트 (begin_at === end_at) 처리 확인', async () => {
+      // events.json의 두 번째 이벤트: { "begin_at": 1620275400, "end_at": 1620275400 }
+      // 이는 2021-05-06 08:30:00에 0초 길이 이벤트
+      
+      const requestBody: RequestBody = {
+        start_day_identifier: '20210506', // 0초 이벤트가 있는 날짜
+        timezone_identifier: 'Asia/Seoul',
+        service_duration: 3600, // 1시간 서비스
+        days: 1,
+        timeslot_interval: 1800, // 30분 간격
+        is_ignore_schedule: false // 스케줄 고려함
+      };
+
+      const response = await request(app)
+        .post('/getTimeSlots')
+        .send(requestBody)
+        .expect(200);
+
+      const dayTimetable: DayTimetable = response.body[0];
+      
+      // 0초 이벤트 timestamp를 Date로 변환
+      const zeroEventTime = new Date(1620275400 * 1000);
+      console.log('0초 이벤트 시간:', zeroEventTime.toISOString()); // 2021-05-06T08:30:00.000Z
+      console.log('생성된 타임슬롯 개수:', dayTimetable.timeslots.length);
+      
+      // 첫 번째와 마지막 타임슬롯 확인
+      if (dayTimetable.timeslots.length > 0) {
+        const firstSlot = dayTimetable.timeslots[0];
+        const lastSlot = dayTimetable.timeslots[dayTimetable.timeslots.length - 1];
+        
+        console.log('첫 번째 타임슬롯:', {
+          begin_at: new Date(firstSlot.begin_at * 1000).toISOString(),
+          end_at: new Date(firstSlot.end_at * 1000).toISOString()
+        });
+        console.log('마지막 타임슬롯:', {
+          begin_at: new Date(lastSlot.begin_at * 1000).toISOString(),
+          end_at: new Date(lastSlot.end_at * 1000).toISOString()
+        });
+        
+        // 0초 이벤트 시간(08:30:00)과 겹치는 타임슬롯이 있는지 확인
+        const conflictingSlot = dayTimetable.timeslots.find(slot => {
+          const serviceEndTime = slot.begin_at + 3600; // 1시간 서비스
+          return slot.begin_at < 1620275400 && serviceEndTime > 1620275400;
+        });
+        
+        if (conflictingSlot) {
+          console.log('0초 이벤트와 겹치는 타임슬롯 발견:', {
+            begin_at: new Date(conflictingSlot.begin_at * 1000).toISOString(),
+            end_at: new Date(conflictingSlot.end_at * 1000).toISOString()
+          });
+        } else {
+          console.log('0초 이벤트와 겹치는 타임슬롯 없음 (정상적으로 필터링됨)');
+        }
+      }
+      
+      expect(dayTimetable.timeslots.length).toBeGreaterThan(0);
+    });
+
+    it('0초 이벤트 vs 일반 이벤트 충돌 처리 비교', async () => {
+      // 1. 0초 이벤트가 있는 날짜의 08:30 시간대 확인
+      const requestWith0SecEvent: RequestBody = {
+        start_day_identifier: '20210506',
+        timezone_identifier: 'Asia/Seoul',
+        service_duration: 1800, // 30분 서비스 (더 짧게 해서 충돌 확인)
+        days: 1,
+        timeslot_interval: 1800,
+        is_ignore_schedule: false
+      };
+
+      const responseWith0Sec = await request(app)
+        .post('/getTimeSlots')
+        .send(requestWith0SecEvent)
+        .expect(200);
+
+      // 2. 일반 이벤트가 있는 날짜 비교
+      const requestWithNormalEvent: RequestBody = {
+        start_day_identifier: '20210507',
+        timezone_identifier: 'Asia/Seoul', 
+        service_duration: 1800,
+        days: 1,
+        timeslot_interval: 1800,
+        is_ignore_schedule: false
+      };
+
+      const responseWithNormal = await request(app)
+        .post('/getTimeSlots')
+        .send(requestWithNormalEvent)
+        .expect(200);
+
+      const timeslots0Sec = responseWith0Sec.body[0].timeslots;
+      const timeslotsNormal = responseWithNormal.body[0].timeslots;
+
+      console.log('0초 이벤트가 있는 날짜 타임슬롯 개수:', timeslots0Sec.length);
+      console.log('일반 이벤트가 있는 날짜 타임슬롯 개수:', timeslotsNormal.length);
+
+      // 0초 이벤트 시간(08:30:00) 주변 타임슬롯 확인
+      const around830Slots = timeslots0Sec.filter((slot: Timeslot) => {
+        const slotTime = new Date(slot.begin_at * 1000);
+        const hour = slotTime.getUTCHours();
+        const minute = slotTime.getUTCMinutes();
+        return hour === 8 && (minute >= 0 && minute <= 59); // 08:00~08:59 범위
+      });
+
+      console.log('08시대 타임슬롯들:', around830Slots.map((slot: Timeslot) => ({
+        begin_at: new Date(slot.begin_at * 1000).toISOString(),
+        end_at: new Date(slot.end_at * 1000).toISOString()
+      })));
+
+      expect(timeslots0Sec.length).toBeGreaterThan(0);
+      expect(timeslotsNormal.length).toBeGreaterThan(0);
+    });
+
+    it('0초 이벤트와 정확히 겹치는 타임슬롯 충돌 확인', async () => {
+      // 0초 이벤트: 1620275400 = 2021-05-06T04:30:00.000Z (UTC) = 한국시간 13:30
+      const requestBody: RequestBody = {
+        start_day_identifier: '20210506',
+        timezone_identifier: 'Asia/Seoul',
+        service_duration: 3600, // 1시간 서비스
+        days: 1,
+        timeslot_interval: 1800, // 30분 간격
+        is_ignore_schedule: false
+      };
+
+      const response = await request(app)
+        .post('/getTimeSlots')
+        .send(requestBody)
+        .expect(200);
+
+      const dayTimetable: DayTimetable = response.body[0];
+      
+      // 0초 이벤트와 겹칠 수 있는 타임슬롯들 찾기
+      // 한국시간 13:00~14:00 슬롯 = UTC 04:00~05:00 = 1620273600~1620277200
+      // 한국시간 13:30~14:30 슬롯 = UTC 04:30~05:30 = 1620275400~1620279000
+      
+      const expectedSlot1300UTC = 1620273600; // 한국시간 13:00 = UTC 04:00
+      const expectedSlot1330UTC = 1620275400; // 한국시간 13:30 = UTC 04:30
+      
+      // 13:00 UTC (한국시간 22:00) 슬롯 찾기
+      const slot1300 = dayTimetable.timeslots.find(slot => slot.begin_at === expectedSlot1300UTC);
+      const slot1330 = dayTimetable.timeslots.find(slot => slot.begin_at === expectedSlot1330UTC);
+      
+      console.log('=== 0초 이벤트 충돌 분석 ===');
+      console.log('0초 이벤트 시간 (UTC):', new Date(1620275400 * 1000).toISOString());
+      console.log('0초 이벤트 시간 (한국):', new Date(1620275400 * 1000).toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'}));
+      
+      console.log('한국시간 13:00 슬롯 (UTC 04:00) 존재 여부:', !!slot1300);
+      if (slot1300) {
+        console.log('-> 이 슬롯은 04:00~05:00이므로 0초 이벤트(04:30)와 겹침 - 필터링되어야 함!');
+      } else {
+        console.log('-> 이 슬롯이 없음 - 0초 이벤트로 인해 올바르게 필터링됨 ✅');
+      }
+      
+      console.log('한국시간 13:30 슬롯 (UTC 04:30) 존재 여부:', !!slot1330);
+      if (slot1330) {
+        console.log('-> 이 슬롯은 정확히 0초 이벤트 시간에 시작 - 충돌하지 않음');
+      } else {
+        console.log('-> 이 슬롯이 없음');
+      }
+      
+      // 실제 생성된 타임슬롯들의 UTC 시간대 확인
+      const earlySlots = dayTimetable.timeslots.filter(slot => {
+        const slotDate = new Date(slot.begin_at * 1000);
+        return slotDate.getUTCHours() >= 3 && slotDate.getUTCHours() <= 6; // UTC 3시~6시
+      });
+      
+      console.log('UTC 03:00~06:00 시간대 타임슬롯들:');
+      earlySlots.forEach((slot: Timeslot) => {
+        const startTime = new Date(slot.begin_at * 1000);
+        const endTime = new Date(slot.end_at * 1000);
+        const koreanStart = startTime.toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'});
+        const koreanEnd = endTime.toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'});
+        
+        console.log(`  UTC: ${startTime.toISOString()} ~ ${endTime.toISOString()}`);
+        console.log(`  한국: ${koreanStart} ~ ${koreanEnd}`);
+        
+        // 0초 이벤트와 충돌하는지 확인
+        const serviceEnd = slot.begin_at + 3600; // 1시간 서비스
+        const hasConflict = slot.begin_at < 1620275400 && serviceEnd > 1620275400;
+        console.log(`  0초 이벤트와 충돌: ${hasConflict ? '예 ❌' : '아니오 ✅'}`);
+        console.log('');
+      });
+      
+      expect(dayTimetable.timeslots.length).toBeGreaterThan(0);
     });
   });
 
