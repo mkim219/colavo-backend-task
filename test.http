@@ -1,0 +1,86 @@
+### 기본 테스트 케이스
+POST http://localhost:3000/getTimeSlots
+Content-Type: application/json
+
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "Asia/Seoul", 
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800
+}
+
+### 여러 날짜 테스트 (3일)
+POST http://localhost:3000/getTimeSlots
+Content-Type: application/json
+
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": 3600,
+  "days": 3,
+  "timeslot_interval": 1800
+}
+
+### 스케줄 무시 테스트
+POST http://localhost:3000/getTimeSlots
+Content-Type: application/json
+
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800,
+  "is_ignore_schedule": true
+}
+
+### 영업시간 무시 테스트
+POST http://localhost:3000/getTimeSlots
+Content-Type: application/json
+
+{
+  "start_day_identifier": "20210509",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800,
+  "is_ignore_workhour": true
+}
+
+### 2021-05-10 테스트 (월요일 - 영업시간 없음)
+POST http://localhost:3000/getTimeSlots
+Content-Type: application/json
+
+{
+  "start_day_identifier": "20210510",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800
+}
+
+### 2021-05-11 테스트 (화요일)
+POST http://localhost:3000/getTimeSlots
+Content-Type: application/json
+
+{
+  "start_day_identifier": "20210511",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": 3600,
+  "days": 1,
+  "timeslot_interval": 1800
+}
+
+### 헬스체크
+GET http://localhost:3000/health
+
+### 잘못된 요청 테스트
+POST http://localhost:3000/getTimeSlots
+Content-Type: application/json
+
+{
+  "start_day_identifier": "invalid",
+  "timezone_identifier": "Asia/Seoul",
+  "service_duration": "invalid"
+} 
