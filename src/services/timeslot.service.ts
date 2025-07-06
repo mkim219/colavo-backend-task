@@ -4,7 +4,6 @@ import {
   parseDayIdentifier, 
   getStartOfDay, 
   getWeekday, 
-  addInterval, 
   calculateDayModifier 
 } from '../utils/timezone.util';
 import workhoursData from '../data/workhours.json';
@@ -89,7 +88,7 @@ export class TimeslotService {
 
       // 기존 예약과 충돌 확인
       if (!isIgnoreSchedule) {
-        timeslots = this.filterConflictingTimeslots(timeslots, serviceDuration);
+        timeslots = this.filterConflictingTimeslots(timeslots);
       }
     }
 
@@ -167,7 +166,7 @@ export class TimeslotService {
   /**
    * 기존 예약과 충돌하는 타임슬롯 필터링
    */
-  private filterConflictingTimeslots(timeslots: Timeslot[], serviceDuration: number): Timeslot[] {
+  private filterConflictingTimeslots(timeslots: Timeslot[]): Timeslot[] {
     return timeslots.filter(timeslot => {
       // 해당 시간대에 겹치는 이벤트가 있는지 확인
       const hasConflict = this.events.some(event => {
